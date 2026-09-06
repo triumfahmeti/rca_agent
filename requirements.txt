@@ -1,0 +1,4 @@
+requests>=2.31.0
+openai>=1.40.0
+pytest>=8.0.0
+docker compose -f compose.yaml -f compose.observability.yaml up --detach
