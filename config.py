@@ -7,7 +7,7 @@ PROMETHEUS_URL = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 JAEGER_URL = os.getenv("JAEGER_URL", "http://localhost:8080/jaeger/ui")
 
 
-OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:61994")
+OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
 
 
 GIT_REPO_PATH = os.getenv("GIT_REPO_PATH", "./opentelemetry-demo")
