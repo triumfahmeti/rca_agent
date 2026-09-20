@@ -38,7 +38,7 @@ def _has_error(span: dict) -> bool:
 
 
 def find_error_traces(service_name: str, limit: int = 5,
-                       lookback_minutes: int = 30) -> dict:
+                       lookback_minutes: int = 10) -> dict:
   
     params = {
         "service": service_name,

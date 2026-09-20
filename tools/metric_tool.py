@@ -3,6 +3,12 @@ import time
 
 from config import PROMETHEUS_URL
 
+EXPECTED_SERVICES = {
+    "frontend", "frontend-proxy", "checkout", "cart", "payment",
+    "product-catalog", "recommendation", "shipping", "currency",
+    "ad", "email", "quote",
+}
+
 def _run_query(promql: str) -> dict:
    
     response = requests.get(
@@ -137,23 +143,38 @@ def get_service_health(window_minutes: int = 5) -> dict:
             "error_percentage": round(error_pct, 1),
         })
 
+
     # Hapi 3: rendit shërbimet aktive sipas përqindjes së gabimeve, nga më i larti
     active_services.sort(key=lambda s: s["error_percentage"], reverse=True)
+
+    seen = set(by_service.keys())
+    missing = sorted(EXPECTED_SERVICES - seen)
+
+    base_note = (
+        "Shërbimet në 'idle_services' nuk kanë pasur asnjë thirrje në këtë "
+        "dritare kohore. Kjo mund të jetë normale (p.sh. shërbime që thirren "
+        "vetëm gjatë blerjes), por mund të tregojë edhe ndërprerje të plotë "
+        "të shërbimit."
+    )
+
+    if missing:
+        base_note += (
+            f" KUJDES: shërbimet {missing} NUK shfaqen fare në metrika. "
+            f"Kjo tregon se ato mund të kenë rënë plotësisht ose të jenë "
+            f"të paarritshme - mungesa e telemetrisë është vetë sinjal i fortë "
+            f"dhe duhet hetuar si kandidat kryesor për shkakun rrënjësor."
+        )
 
     return {
         "status": "ok",
         "window_minutes": window_minutes,
         "active_services": active_services,
         "idle_services": sorted(idle_services),
-        "note": (
-            "Shërbimet në 'idle_services' nuk kanë pasur asnjë thirrje në këtë "
-            "dritare kohore. Kjo mund të jetë normale (p.sh. shërbime që thirren "
-            "vetëm gjatë blerjes), por mund të tregojë edhe ndërprerje të plotë "
-            "të shërbimit. Për të dalluar, krahaso me një dritare më të gjatë."
-        ),
+        "missing_services": missing,
+        "note": base_note,
     }
 
-def get_service_error_history(service_name: str, minutes: int = 30) -> dict:
+def get_service_error_history(service_name: str, minutes: int = 10) -> dict:
     """
     Kthen historikun e gabimeve për një shërbim, si përmbledhje trendi.
     Përdore për të kuptuar KUR filloi një problem dhe si u zhvillua.
@@ -191,6 +212,101 @@ def get_service_error_history(service_name: str, minutes: int = 30) -> dict:
         "metric": "error_rate",
         **analysis,
     }
+
+
+def get_service_latency(window_minutes: int = 5) -> dict:
+    """
+    Kthen latencën (p50, p95, p99) për të gjitha shërbimet, të renditura
+    nga më i ngadalti. Përdore kur dyshohet degradim performance dhe jo
+    dështim - shërbimet mund të jenë "të shëndetshme" nga pikëpamja e
+    gabimeve, por shumë të ngadalta.
+    """
+    quantiles = {"p50": 0.5, "p95": 0.95, "p99": 0.99}
+    by_service = {}
+
+    for label, q in quantiles.items():
+        promql = (
+            f"histogram_quantile({q}, sum(rate("
+            f"traces_span_metrics_duration_milliseconds_bucket"
+            f"[{window_minutes}m])) by (le, service_name))"
+        )
+        try:
+            data = _run_query(promql)
+        except requests.RequestException as e:
+            return {"status": "error", "error": str(e), "services": []}
+
+        for item in data["data"]["result"]:
+            service = item["metric"].get("service_name")
+            if not service:
+                continue
+            raw = item["value"][1]
+            # Prometheus kthen "NaN" si string për shërbime pa të dhëna
+            if raw == "NaN":
+                continue
+            by_service.setdefault(service, {})[label] = round(float(raw), 1)
+
+    services = [
+        {"service": s, **vals}
+        for s, vals in by_service.items()
+        if vals.get("p95") is not None
+    ]
+    services.sort(key=lambda s: s.get("p95", 0), reverse=True)
+
+    return {
+        "status": "ok",
+        "window_minutes": window_minutes,
+        "unit": "millisekonda",
+        "services": services,
+        "note": (
+            "Latenca e lartë pa gabime tregon degradim performance, jo dështim. "
+            "Shërbimet 'load-generator', 'flagd-ui' dhe 'flagd' mund të kenë "
+            "vlera shumë të larta për shkak të lidhjeve afatgjata - kjo është "
+            "normale dhe nuk tregon problem."
+        ),
+    }
+
+
+def get_container_resources() -> dict:
+    """
+    Kthen shfrytëzimin e CPU dhe memories për çdo kontejner, të renditur
+    sipas CPU-së. Përdore kur dyshohet problem burimesh - p.sh. një shërbim
+    që konsumon CPU jashtëzakonisht shumë ose i afrohet limitit të memories.
+    """
+    resources = {}
+
+    try:
+        cpu_data = _run_query("container_cpu_utilization_ratio")
+        mem_data = _run_query("container_memory_percent_ratio")
+    except requests.RequestException as e:
+        return {"status": "error", "error": str(e), "containers": []}
+
+    for item in cpu_data["data"]["result"]:
+        name = item["metric"].get("container_name")
+        if name:
+            resources.setdefault(name, {})["cpu_percent"] = round(
+                float(item["value"][1]), 1
+            )
+
+    for item in mem_data["data"]["result"]:
+        name = item["metric"].get("container_name")
+        if name:
+            resources.setdefault(name, {})["memory_percent"] = round(
+                float(item["value"][1]), 1
+            )
+
+    containers = [{"container": n, **v} for n, v in resources.items()]
+    containers.sort(key=lambda c: c.get("cpu_percent", 0), reverse=True)
+
+    return {
+        "status": "ok",
+        "containers": containers,
+        "note": (
+            "CPU mbi ~50% për një shërbim aplikacioni është e pazakontë dhe "
+            "mund të tregojë ngarkesë anormale. Kontejneri 'load-generator' "
+            "pritet të ketë CPU të lartë - kjo është funksioni i tij."
+        ),
+    }
+
 # if __name__ == "__main__":
 #     import json
 #     print(json.dumps(get_service_health(), indent=2, ensure_ascii=False))

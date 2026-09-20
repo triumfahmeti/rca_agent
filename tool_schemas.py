@@ -5,7 +5,12 @@ Këto përshkrime janë i vetmi informacion që ka LLM-ja për të vendosur
 cilën vegël të thërrasë. Prandaj secili përfshin jo vetëm çfarë bën
 vegla, por edhe KUR duhet përdorur gjatë një investigimi.
 """
-from tools.metric_tool import get_service_health, get_service_error_history
+from tools.metric_tool import (
+    get_service_health,
+    get_service_error_history,
+    get_service_latency,
+    get_container_resources,
+)
 from tools.log_tool import get_service_logs
 from tools.trace_tool import find_error_traces
 from tools.git_tool import get_recent_commits
@@ -54,7 +59,7 @@ TOOLS = [
                     },
                     "minutes": {
                         "type": "integer",
-                        "description": "Sa minuta prapa të analizohen (default 60)",
+                        "description": "Sa minuta prapa të analizohen (default 10)",
                     },
                 },
                 "required": ["service_name"],
@@ -66,11 +71,12 @@ TOOLS = [
         "function": {
             "name": "get_service_logs",
             "description": (
-                "Kthen mesazhet e gabimit nga logs për një shërbim, të grupuara "
-                "sipas modelit (mesazhe identike numërohen së bashku). Përfshin "
-                "vendndodhjen në kod ku ndodhi gabimi kur kjo është e disponueshme. "
-                "Përdore për të kuptuar PSE dështoi një shërbim - metrikat tregojnë "
-                "që ka gabime, por vetëm logs tregojnë mesazhin konkret."
+                            "Niveli minimal: 'info', 'warn', 'error', 'fatal'. "
+                            "PËRDOR GJITHMONË 'warn' përveç nëse ke arsye "
+                            "specifike për ndryshe. Shumë shërbime në këtë "
+                            "sistem i regjistrojnë dështimet si 'warn', jo "
+                            "'error' - filtrimi me 'error' mund të kthejë zero "
+                            "rezultate edhe kur ekzistojnë gabime të vërteta."
             ),
             "parameters": {
                 "type": "object",
@@ -89,7 +95,7 @@ TOOLS = [
                     },
                     "minutes": {
                         "type": "integer",
-                        "description": "Sa minuta prapa (default 15)",
+                        "description": "Sa minuta prapa (default 5)",
                     },
                 },
                 "required": ["service_name"],
@@ -116,7 +122,7 @@ TOOLS = [
                     },
                     "lookback_minutes": {
                         "type": "integer",
-                        "description": "Sa minuta prapa (default 30)",
+                        "description": "Sa minuta prapa (default 10)",
                     },
                 },
                 "required": ["service_name"],
@@ -154,6 +160,44 @@ TOOLS = [
             },
         },
     },
+
+     {
+        "type": "function",
+        "function": {
+            "name": "get_service_latency",
+            "description": (
+                "Kthen latencën (p50, p95, p99) për të gjitha shërbimet, të "
+                "renditura nga më i ngadalti. E DOMOSDOSHME kur shërbimet nuk "
+                "kanë gabime por diçka duket e ngadaltë, ose kur get_service_health "
+                "nuk tregon anomali të qarta. Jo çdo incident prodhon gabime - "
+                "shumë incidente janë degradime performance."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window_minutes": {
+                        "type": "integer",
+                        "description": "Dritarja kohore (default 5)",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_container_resources",
+            "description": (
+                "Kthen shfrytëzimin e CPU dhe memories për çdo kontejner. "
+                "Përdore kur dyshohet ngarkesë anormale, memory leak, ose kur "
+                "një shërbim është i ngadaltë pa arsye të dukshme. Konsumi i "
+                "lartë i CPU-së ose memoria afër limitit janë shkaqe të "
+                "zakonshme incidentesh që nuk shfaqen si gabime."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
@@ -163,4 +207,6 @@ TOOL_FUNCTIONS = {
     "get_service_logs": get_service_logs,
     "find_error_traces": find_error_traces,
     "get_recent_commits": get_recent_commits,
+    "get_service_latency": get_service_latency,
+    "get_container_resources": get_container_resources,
 }
