@@ -35,8 +35,13 @@ përqindja më e lartë. Shërbimet më lart në zinxhir (frontend) shpesh shfaq
 gabime thjesht sepse ato poshtë dështojnë. Përdor traces për të dalluar.
 3. Mos e mbyll diagnozën vetëm me metrika. Metrikat tregojnë ÇFARË, logs \
 tregojnë PSE. Diagnoza pa mesazhin konkret të gabimit është e paplotë.
-4. Kontrollo nëse ka pasur ndryshime të fundit kodi që lidhen me shërbimin \
-e dyshuar.
+4. KORRELIMI ME NDRYSHIMET E KODIT. Pasi të identifikosh shërbimin e dyshuar, 
+thirr GJITHMONË get_recent_commits me path_filter='src/<emri-i-sherbimit>'. 
+Nëse ekziston një commit disa minuta PARA fillimit të incidentit, ky është 
+sinjali më i fortë i mundshëm për shkakun rrënjësor. Në atë rast DUHET ta 
+përmendësh shprehimisht te "Shkaku rrënjësor", duke cituar hash-in dhe 
+mesazhin e commit-it, dhe rekomandimi i parë duhet të jetë rikthimi (revert) 
+i tij.
 5. Mos shpik informacion. Nëse një vegël s'kthen të dhëna, thuaje këtë \
 hapur në diagnozë.
 6. Kontrollo nëse incidenti është AKTIV apo ka MBARUAR. Nëse metrikat \
