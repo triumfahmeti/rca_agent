@@ -150,3 +150,42 @@ def get_service_logs(service_name: str, min_severity: str = "warn",
         "unique_patterns": unique_patterns,
         "note": note,
     }
+
+def get_error_log_counts(minutes: int = 2) -> dict:
+    """
+    Kthen numrin e logs me nivel warn ose më lart për ÇDO shërbim, me një
+    thirrje të vetme. Përdoret nga moduli i detektimit, që duhet t'i
+    kontrollojë të gjitha shërbimet shpejt dhe shpesh.
+
+    E nevojshme sepse disa incidente (p.sh. cart_failure) nuk shfaqen fare
+    në metrika dhe janë të dukshme vetëm në logs.
+    """
+    query = {
+        "size": 0,
+        "query": {
+            "bool": {
+                "must": [
+                    {"range": {"severity.number": {"gte": SEVERITY_LEVELS["warn"]}}},
+                    {"range": {"@timestamp": {"gte": f"now-{minutes}m"}}},
+                ]
+            }
+        },
+        "aggs": {
+            "by_service": {
+                "terms": {"field": "resource.service.name.keyword", "size": 50}
+            }
+        },
+    }
+
+    try:
+        response = requests.post(
+            f"{OPENSEARCH_URL}/otel-logs-*/_search", json=query, timeout=15
+        )
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as e:
+        return {"status": "error", "error": str(e), "counts": {}}
+
+    buckets = data.get("aggregations", {}).get("by_service", {}).get("buckets", [])
+    counts = {b["key"]: b["doc_count"] for b in buckets}
+    return {"status": "ok", "window_minutes": minutes, "counts": counts}

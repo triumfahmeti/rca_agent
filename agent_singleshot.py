@@ -31,7 +31,25 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # single-shot nuk mund të vendosë vetë ku të shikojë, ne i japim të dhëna
 # për shërbimet kryesore të zinxhirit të blerjes.
 DEFAULT_SERVICES = ["payment", "checkout", "cart", "recommendation", "product-catalog", "frontend"]
+# Korrelimi me ndryshimet e kodit ka kuptim vetëm për ndryshime të afërta
+# në kohë. Me dritare 24-orëshe, commits të vjetra dhe të palidhura
+# sugjerohen si shkak.
+COMMIT_WINDOW_HOURS = 6
 
+def _find_suspects(data: dict, min_error_pct: float = 5.0) -> list:
+    """
+    Kthen shërbimet që shfaqin anomali në të dhënat e mbledhura: përqindje
+    gabimesh mbi pragun, ose të paktën një model gabimi në logs.
+    Vetëm për këto shërbime kontrollohen commits.
+    """
+    suspects = []
+    for s in data["service_health"].get("active_services", []):
+        if s["error_percentage"] >= min_error_pct and s["service"] in data["per_service"]:
+            suspects.append(s["service"])
+    for service, d in data["per_service"].items():
+        if d["logs"].get("unique_patterns") and service not in suspects:
+            suspects.append(service)
+    return suspects
 
 def collect_all_data(services: list = None) -> dict:
     """
@@ -44,7 +62,10 @@ def collect_all_data(services: list = None) -> dict:
         "service_latency": get_service_latency(),
         "container_resources": get_container_resources(),
         "per_service": {},
-        "recent_commits": get_recent_commits(since_hours=24),
+        # "recent_commits": {
+        #     s: get_recent_commits(since_hours=24, path_filter=f"src/{s}")
+        #     for s in services[:3]
+        # },
     }
 
     for service in services:
@@ -54,10 +75,19 @@ def collect_all_data(services: list = None) -> dict:
             "error_traces": find_error_traces(service, lookback_minutes=10),
         }
 
+    # Commits vetëm për shërbimet e dyshuara dhe vetëm të fundit
+    suspects = _find_suspects(data)
+    data["recent_commits"] = {
+        s: get_recent_commits(since_hours=COMMIT_WINDOW_HOURS, path_filter=f"src/{s}")
+        for s in suspects
+    }
+    data["suspects_for_commit_check"] = suspects
+
     return data
 
 
-def investigate_singleshot(incident_description: str, verbose: bool = True) -> dict:
+def investigate_singleshot(incident_description: str, verbose: bool = True,
+                           services: list = None) -> dict:
     """
     Prodhon një diagnozë me një thirrje të vetme LLM, mbi të dhëna të
     mbledhura paraprakisht.
@@ -67,7 +97,7 @@ def investigate_singleshot(incident_description: str, verbose: bool = True) -> d
     if verbose:
         print("Duke mbledhur të dhëna nga të gjitha burimet...")
 
-    data = collect_all_data()
+    data = collect_all_data(services)
 
     prompt = f"""INCIDENTI:
 {incident_description}

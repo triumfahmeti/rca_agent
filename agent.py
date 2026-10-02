@@ -36,12 +36,11 @@ gabime thjesht sepse ato poshtë dështojnë. Përdor traces për të dalluar.
 3. Mos e mbyll diagnozën vetëm me metrika. Metrikat tregojnë ÇFARË, logs \
 tregojnë PSE. Diagnoza pa mesazhin konkret të gabimit është e paplotë.
 4. KORRELIMI ME NDRYSHIMET E KODIT. Pasi të identifikosh shërbimin e dyshuar, 
-thirr GJITHMONË get_recent_commits me path_filter='src/<emri-i-sherbimit>'. 
-Nëse ekziston një commit disa minuta PARA fillimit të incidentit, ky është 
-sinjali më i fortë i mundshëm për shkakun rrënjësor. Në atë rast DUHET ta 
-përmendësh shprehimisht te "Shkaku rrënjësor", duke cituar hash-in dhe 
-mesazhin e commit-it, dhe rekomandimi i parë duhet të jetë rikthimi (revert) 
-i tij.
+kontrollo commits e fundit PËR ATË SHËRBIM. Sugjero rikthimin (revert) e një 
+commit-i VETËM nëse plotësohen të dyja kushtet: (a) commit-i prek shërbimin që 
+ke identifikuar si shkak, dhe (b) është bërë pak para fillimit të incidentit. 
+Nëse commit-i prek një shërbim tjetër, mos e përmend si shkak dhe mos sugjero 
+rikthimin e tij. Kur kushtet plotësohen, cito hash-in dhe mesazhin.
 5. Mos shpik informacion. Nëse një vegël s'kthen të dhëna, thuaje këtë \
 hapur në diagnozë.
 6. Kontrollo nëse incidenti është AKTIV apo ka MBARUAR. Nëse metrikat \
